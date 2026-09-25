@@ -1,0 +1,10 @@
+dist/
+testdata/music/
+.DS_Store
+
+# Android 构建产物与本地配置
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/jniLibs/

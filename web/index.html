@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>舞会音乐播放器</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- 首次设置：选择音乐库 -->
+<div id="setup" class="overlay hidden">
+  <div class="dialog">
+    <h2>欢迎使用舞会音乐播放器</h2>
+    <p class="muted">选择音乐库根目录：其下每个一级子目录视为一个舞种（自动识别摩登 / 拉丁 / 交谊舞分组，
+      子目录中的音频文件会归入对应舞种）。</p>
+    <div class="setup-pick">
+      <button id="setup-pick" class="primary">选择目录</button>
+      <span class="muted small">弹出系统文件夹选择框</span>
+    </div>
+    <div class="setup-manual">
+      <input id="setup-root" type="text" spellcheck="false" placeholder="或手动粘贴目录路径">
+      <button id="setup-ok" class="primary">开始使用</button>
+    </div>
+    <p class="muted small">也可以在启动程序时用参数指定：<code>-lib "音乐库路径"</code></p>
+  </div>
+</div>
+
+<header>
+  <div class="brand">舞会音乐播放器</div>
+  <button id="btn-libinfo" class="libinfo ghost" title="更改音乐库目录"><span id="libinfo-text">音乐库：加载中…</span></button>
+  <div class="spacer"></div>
+  <button id="btn-rescan"><span class="t-full">重新扫描</span><span class="t-short">扫描</span></button>
+  <button id="btn-comp"><span class="t-full">点播模式</span><span class="t-short">点播</span></button>
+  <button id="btn-qr" class="hidden"><span class="t-full">手机接入</span><span class="t-short">手机</span></button>
+  <button id="btn-playlists"><span class="t-full">歌单管理</span><span class="t-short">歌单</span></button>
+  <button id="btn-help"><span class="t-full">使用说明</span><span class="t-short">帮助</span></button>
+  <button id="btn-quit">退出</button>
+</header>
+
+<nav id="mobile-tabs">
+  <button data-tab="pl" class="active">歌单</button>
+  <button data-tab="gen">生成歌单</button>
+</nav>
+
+<main>
+  <aside id="sidebar">
+    <h3>生成歌单</h3>
+    <p class="muted small">为每个舞种设置数量（0 为不选）：</p>
+    <div id="cat-list"></div>
+    <div class="gen-opts">
+      <label><input type="radio" name="genorder" value="interleave" checked> 交错排列</label>
+      <label><input type="radio" name="genorder" value="separate"> 按舞种分组</label>
+    </div>
+    <button id="btn-generate" class="primary wide">生成歌单</button>
+    <div class="side-actions">
+      <button id="btn-shuffle">打乱当前歌单</button>
+      <button id="btn-clear">清空</button>
+    </div>
+  </aside>
+
+  <section id="playlist-pane">
+    <div class="pane-head">
+      <h3>当前歌单 <span id="pl-summary" class="muted"></span>
+        <button id="btn-add" class="small-btn" title="从曲库添加乐曲">添加乐曲</button>
+      </h3>
+    </div>
+    <div id="party-strip" class="ctrl-strip">
+      <span class="strip-name">播放设置</span>
+      <span class="strip-item">单曲时长
+        <button class="step" data-g="party" data-f="play_limit_sec" data-d="-5">−</button>
+        <b class="strip-val" id="strip-party-limit">-</b>
+        <button class="step" data-g="party" data-f="play_limit_sec" data-d="5">＋</button>
+      </span>
+      <span class="strip-item">渐弱
+        <button class="step" data-g="party" data-f="fadeout_sec" data-d="-1">−</button>
+        <b class="strip-val" id="strip-party-fade"></b>
+        <button class="step" data-g="party" data-f="fadeout_sec" data-d="1">＋</button>
+      </span>
+      <span class="strip-item">歌曲间隔
+        <button class="step" data-g="party" data-f="gap_sec" data-d="-1">−</button>
+        <b class="strip-val" id="strip-party-gap"></b>
+        <button class="step" data-g="party" data-f="gap_sec" data-d="1">＋</button>
+      </span>
+      <span class="muted small">秒 · 0 = 完整播放</span>
+    </div>
+    <div id="pl-scroll">
+      <div id="pl-list"></div>
+      <div id="pl-empty" class="muted center pad">歌单为空：点「添加乐曲」从曲库挑选，
+        或在「生成歌单」里按舞种随机生成，也可在「歌单管理」里载入已有歌单。</div>
+    </div>
+  </section>
+
+  <!-- 点播模式（独立页面，与舞会歌单平行） -->
+  <section id="page-comp" class="page hidden">
+    <div class="page-head">
+      <button id="btn-comp-back" class="ghost">返回播放</button>
+      <h3>点播模式</h3>
+      <span class="muted small">与舞会歌单相互独立；时长渐弱在下方设置条调整</span>
+    </div>
+    <div class="page-body">
+      <div class="card">
+        <h4>播放设置 <span class="muted small">（点播与歌单相互独立，即改即存）</span></h4>
+        <div id="comp-strip" class="ctrl-strip">
+          <span class="strip-item">单曲时长
+            <button class="step" data-g="comp" data-f="play_limit_sec" data-d="-5">−</button>
+            <b class="strip-val" id="strip-comp-limit"></b>
+            <button class="step" data-g="comp" data-f="play_limit_sec" data-d="5">＋</button>
+          </span>
+          <span class="strip-item">渐弱
+            <button class="step" data-g="comp" data-f="fadeout_sec" data-d="-1">−</button>
+            <b class="strip-val" id="strip-comp-fade"></b>
+            <button class="step" data-g="comp" data-f="fadeout_sec" data-d="1">＋</button>
+          </span>
+          <span class="strip-item">歌曲间隔
+            <button class="step" data-g="comp" data-f="song_gap_sec" data-d="-1">−</button>
+            <b class="strip-val" id="strip-comp-songgap"></b>
+            <button class="step" data-g="comp" data-f="song_gap_sec" data-d="1">＋</button>
+          </span>
+          <span class="strip-item">舞种间隔
+            <button class="step" data-g="comp" data-f="genre_gap_sec" data-d="-5">−</button>
+            <b class="strip-val" id="strip-comp-genregap"></b>
+            <button class="step" data-g="comp" data-f="genre_gap_sec" data-d="5">＋</button>
+          </span>
+          <label class="chk"><input id="strip-comp-announce" type="checkbox" checked> 播报舞种名称</label>
+        </div>
+      </div>
+      <div class="card">
+        <h4>舞种点播</h4>
+        <p class="muted small">点「点播一首」：播报舞种名并随机播放一首，播完即停；
+          点「曲目」可浏览该舞种全部乐曲并指定播放；点「加入轮次」把舞种加入下方轮次编辑。</p>
+        <div id="genre-groups"></div>
+      </div>
+      <div class="card" id="round-editor-card" style="display:none">
+        <h4>轮次编辑 <span class="muted small">（按下方排列顺序依次播放，舞种内随机抽曲）</span></h4>
+        <div id="round-list"></div>
+        <div class="comp-actions">
+          <span class="spacer"></span>
+          <button id="round-clear" class="ghost small-btn">清空轮次</button>
+        </div>
+        <button id="comp-start" class="primary wide">播放轮次</button>
+      </div>
+      <div class="card" id="comp-status-card" style="display:none">
+        <h4>播放队列 <button id="comp-stop" class="danger small-btn">停止点播</button></h4>
+        <div id="comp-queue"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 歌单管理（独立页面） -->
+  <section id="page-playlists" class="page hidden">
+    <div class="page-head">
+      <button id="btn-pl-back" class="ghost">返回播放</button>
+      <h3>歌单管理</h3>
+    </div>
+    <div class="page-body">
+      <div class="card">
+        <h4>当前歌单</h4>
+        <p class="muted small">挂载曲库：<span id="cur-mount" class="mono">-</span></p>
+        <div class="pl-save-row">
+          <input id="pl-name" type="text" placeholder="输入名称保存当前歌单，如：周五舞会">
+          <button id="pl-save" class="primary">保存</button>
+        </div>
+        <p class="muted small" id="cur-pl-stat"></p>
+      </div>
+      <div class="card">
+        <h4>已保存歌单</h4>
+        <div id="pl-saved"></div>
+      </div>
+      <div class="card">
+        <h4>导入歌单</h4>
+        <p class="muted small">支持 .json / .m3u / .m3u8 / .pls / .csv（兼容舞会音乐播放器 v1.x 导出的 CSV）。
+          导入的歌单若记录了挂载目录，会自动切换到该曲库。</p>
+        <input id="pl-import" type="file" accept=".json,.m3u,.m3u8,.pls,.csv">
+      </div>
+    </div>
+  </section>
+
+  <!-- 使用说明（独立页面） -->
+  <section id="page-help" class="page hidden">
+    <div class="page-head">
+      <button id="btn-help-back" class="ghost">返回播放</button>
+      <h3>使用说明</h3>
+    </div>
+    <div class="page-body" id="help-body"></div>
+  </section>
+</main>
+
+<footer id="playerbar">
+  <div class="transport">
+    <button id="btn-prev" class="icon-btn" title="上一首">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h2.4v14H7zM20 5v14L9.8 12z"/></svg>
+    </button>
+    <button id="btn-play" class="big" title="播放/暂停（空格）">
+      <svg id="ic-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4.5v15l13-7.5z"/></svg>
+      <svg id="ic-pause" viewBox="0 0 24 24" aria-hidden="true" class="hidden"><path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/></svg>
+    </button>
+    <button id="btn-next" class="icon-btn" title="下一首">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.6 12L3.4 5v14zM16.6 5H19v14h-2.4z"/></svg>
+    </button>
+  </div>
+  <div class="now">
+    <div class="now-title" id="now-title">未在播放</div>
+    <div class="seek-row">
+      <span id="t-cur" class="mono">0:00</span>
+      <input id="seek" type="range" min="0" max="1000" value="0">
+      <span id="t-total" class="mono">0:00</span>
+    </div>
+    <div class="now-sub" id="now-sub"></div>
+  </div>
+  <div class="vol"><span class="vol-label">音量</span><input id="volume" type="range" min="0" max="100" value="90"></div>
+  <audio id="audio" preload="auto"></audio>
+</footer>
+
+<!-- 添加乐曲（曲库文件树） -->
+<div id="dlg-add" class="overlay hidden">
+  <div class="dialog wide-dialog">
+    <h2>添加乐曲</h2>
+    <p class="muted small">当前歌单挂载的曲库：<span id="add-mount" class="mono"></span></p>
+    <div id="add-tree" class="add-tree"><div class="muted small">加载中…</div></div>
+    <div class="dialog-actions">
+      <button data-close>完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- 手机接入对话框 -->
+<div id="dlg-qr" class="overlay hidden">
+  <div class="dialog qr-dialog">
+    <h2>手机接入</h2>
+    <p class="muted small">手机连接同一 Wi-Fi，扫码或输入地址即可用手机浏览器打开播放页面。</p>
+    <div class="qr-box"><img id="qr-img" alt="接入二维码"></div>
+    <div id="qr-urls" class="qr-urls mono"></div>
+    <p class="muted small">提示：地址只在程序以 <code>-listen 0.0.0.0</code> 启动时可用。</p>
+    <div class="dialog-actions">
+      <button data-close>关闭</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
