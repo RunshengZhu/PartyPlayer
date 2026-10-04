@@ -63,6 +63,7 @@
     <div class="pane-head">
       <h3>当前歌单 <span id="pl-summary" class="muted"></span>
         <button id="btn-add" class="small-btn" title="从曲库添加乐曲">添加乐曲</button>
+        <button id="btn-poster" class="small-btn" title="生成可打印/传播的歌单图片">歌单图片</button>
       </h3>
     </div>
     <div id="party-strip" class="ctrl-strip">
@@ -211,6 +212,32 @@
   <div class="vol"><span class="vol-label">音量</span><input id="volume" type="range" min="0" max="100" value="90"></div>
   <audio id="audio" preload="auto"></audio>
 </footer>
+
+<!-- 歌单图片（A4 印刷版渲染） -->
+<div id="dlg-poster" class="overlay hidden">
+  <div class="dialog poster-dialog">
+    <h2>歌单图片 <span class="muted small">A4 竖版 · 300dpi · 可打印可传播</span></h2>
+    <div class="poster-layout">
+      <div class="poster-controls">
+        <label class="pc-field">标题<input id="poster-title" type="text" value="舞会歌单" maxlength="40"></label>
+        <label class="pc-field">副标题<input id="poster-sub" type="text" maxlength="60"></label>
+        <div class="pc-field">背景
+          <div id="poster-presets" class="poster-presets"></div>
+        </div>
+        <label class="pc-field btn-file">
+          <input id="poster-import" type="file" accept="image/*">
+          <span>导入自定义图片背景…</span>
+        </label>
+        <button id="poster-download" class="primary wide">下载 PNG（A4 · 300dpi）</button>
+        <p class="muted small">提示：导入网络上下载的模板图前请确认其授权允许使用。</p>
+      </div>
+      <canvas id="poster-canvas" width="2480" height="3508" class="poster-preview"></canvas>
+    </div>
+    <div class="dialog-actions">
+      <button data-close>关闭</button>
+    </div>
+  </div>
+</div>
 
 <!-- 添加乐曲（曲库文件树） -->
 <div id="dlg-add" class="overlay hidden">

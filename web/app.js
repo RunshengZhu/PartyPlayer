@@ -1244,8 +1244,17 @@ const HELP_SECTIONS = [
     ],
   },
   {
+    img: "poster.png",
+    title: "7. 歌单图片：生成可打印的 A4 歌单",
+    steps: [
+      "歌单页点「歌单图片」，按舞种分栏自动排版成 A4 竖版（300dpi）。",
+      "选择经典预设背景，或「导入自定义图片背景」使用网上下载的模板图。",
+      "描边文字保证任何背景下清晰可读；点「下载 PNG」即可打印或分享。",
+    ],
+  },
+  {
     img: "qr.png",
-    title: "7. 手机接入",
+    title: "8. 手机接入",
     steps: [
       "以 -listen 0.0.0.0 参数启动后，顶部出现「手机接入」。",
       "手机连同一 Wi-Fi，扫码或输入地址即可打开同一播放页面。",
@@ -1285,5 +1294,244 @@ function renderHelp() {
   }
 }
 
+
+/* ================= 歌单图片（A4 印刷版渲染） =================
+   Canvas 渲染：预设经典背景 / 自定义图片背景，描边文字保证任意背景高可读。 */
+const POSTER_W = 2480, POSTER_H = 3508; // A4 竖版 300dpi
+const poster = { bg: "navy", bgImage: null };
+
+const POSTER_PRESETS = [
+  { id: "navy",  name: "午夜蓝金", dark: true,
+    css: "linear-gradient(180deg,#101d3a,#233a66)",
+    draw: (ctx) => { posterGrad(ctx, "#101d3a", "#243b68"); posterFrame(ctx, "#d9b45b"); } },
+  { id: "black", name: "绅士黑", dark: true,
+    css: "linear-gradient(180deg,#2b2b30,#101013)",
+    draw: (ctx) => { posterGrad(ctx, "#2e2e34", "#0f0f12"); posterFrame(ctx, "#c8c0a8"); } },
+  { id: "wine",  name: "酒红丝绒", dark: true,
+    css: "linear-gradient(180deg,#7a1f2b,#3d0d15)",
+    draw: (ctx) => { posterGrad(ctx, "#82222f", "#3a0c14"); posterFrame(ctx, "#e0c184"); } },
+  { id: "green", name: "墨绿鎏金", dark: true,
+    css: "linear-gradient(180deg,#12352a,#1e4a3a)",
+    draw: (ctx) => { posterGrad(ctx, "#143a2d", "#1d4a3b"); posterFrame(ctx, "#d9b45b"); } },
+  { id: "ivory", name: "香槟象牙", dark: false,
+    css: "linear-gradient(180deg,#f7f1e3,#e6d7b8)",
+    draw: (ctx) => { posterGrad(ctx, "#f8f2e5", "#e8dab9"); posterFrame(ctx, "#b99a52"); } },
+];
+
+function posterGrad(ctx, from, to) {
+  const g = ctx.createLinearGradient(0, 0, 0, POSTER_H);
+  g.addColorStop(0, from); g.addColorStop(1, to);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, POSTER_W, POSTER_H);
+  // 暗角
+  const v = ctx.createRadialGradient(POSTER_W/2, POSTER_H*0.42, POSTER_H*0.2, POSTER_W/2, POSTER_H/2, POSTER_H*0.75);
+  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,0.30)");
+  ctx.fillStyle = v; ctx.fillRect(0, 0, POSTER_W, POSTER_H);
+}
+function posterFrame(ctx, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 8; ctx.strokeRect(58, 58, POSTER_W-116, POSTER_H-116);
+  ctx.lineWidth = 2; ctx.strokeRect(84, 84, POSTER_W-168, POSTER_H-168);
+}
+
+function posterBgLuminanceDark() {
+  // 对当前画布取样平均亮度：返回 true 表示背景偏暗（应用浅色文字）
+  const c = document.createElement("canvas");
+  c.width = 80; c.height = 113;
+  const x = c.getContext("2d");
+  x.drawImage($("#poster-canvas"), 0, 0, 80, 113);
+  const d = x.getImageData(0, 0, 80, 113).data;
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 4) sum += 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
+  return (sum / (d.length / 4)) < 140;
+}
+
+function renderPoster() {
+  const cv = $("#poster-canvas");
+  const ctx = cv.getContext("2d");
+  const preset = POSTER_PRESETS.find((p) => p.id === poster.bg) || POSTER_PRESETS[0];
+  if (poster.bgImage) {
+    // 自定义图：等比 cover 裁切铺满
+    const img = poster.bgImage, s = Math.max(POSTER_W/img.width, POSTER_H/img.height);
+    const w = img.width*s, h = img.height*s;
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, POSTER_W, POSTER_H);
+    ctx.drawImage(img, (POSTER_W-w)/2, (POSTER_H-h)/2, w, h);
+  } else {
+    preset.draw(ctx);
+  }
+  const dark = poster.bgImage ? posterBgLuminanceDark() : preset.dark;
+  const ink     = dark ? "#f5efe2" : "#2b2115";      // 主文字
+  const stroke  = dark ? "rgba(10,8,4,0.85)" : "rgba(255,252,240,0.9)"; // 描边
+  const accent  = dark ? "#e3c37a" : "#8a6d1f";      // 分组/装饰
+  const muted   = dark ? "rgba(245,239,226,0.75)" : "rgba(43,33,21,0.72)";
+
+  // 半透明衬底，保证任何背景下的可读性
+  const scrim = dark ? "rgba(6,8,14,0.42)" : "rgba(255,252,242,0.55)";
+  ctx.fillStyle = scrim;
+  const m = 130, r = 46;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(m, 150, POSTER_W - m*2, POSTER_H - 150 - 210, r);
+  else ctx.rect(m, 150, POSTER_W - m*2, POSTER_H - 150 - 210);
+  ctx.fill();
+
+  // 标题区
+  const title = ($("#poster-title").value || "舞会歌单").trim();
+  const sub = $("#poster-sub").value.trim();
+  ctx.textBaseline = "top";
+  drawStrokeText(ctx, title, POSTER_W/2, 320, "center", 170, ink, stroke, "bold");
+  ctx.fillStyle = accent;
+  ctx.fillRect(POSTER_W/2 - 260, 560, 520, 7);
+  if (sub) drawStrokeText(ctx, sub, POSTER_W/2, 620, "center", 66, muted, stroke, "");
+
+  // 内容：按舞种分块，双栏自适应
+  const byCat = new Map();
+  for (const t of state.playlist) {
+    if (t.missing) continue;
+    const k = t.category || "乐曲";
+    if (!byCat.has(k)) byCat.set(k, []);
+    byCat.get(k).push(t);
+  }
+  const blocks = [...byCat.entries()].map(([cat, tracks]) => ({ cat, tracks }));
+
+  const colTop = sub ? 800 : 740;
+  const colBottom = POSTER_H - 300;
+  const colGap = 90;
+  const cols = blocks.length > 6 || state.playlist.length > 34 ? 3 : 2;
+  const colW = (POSTER_W - m*2 - colGap*(cols-1)) / cols;
+
+  // 自动缩放直到排下
+  for (let scale = 1.0; scale >= 0.55; scale -= 0.06) {
+    if (posterLayout(ctx, blocks, cols, colW, colTop, colBottom, scale, ink, stroke, accent, muted, dark)) break;
+  }
+
+  // 页脚
+  drawStrokeText(ctx, `舞会音乐播放器 · ${new Date().toLocaleDateString("zh-CN")}`,
+    POSTER_W/2, POSTER_H - 165, "center", 42, muted, stroke, "");
+}
+
+function drawStrokeText(ctx, text, x, y, align, size, fill, stroke, weight) {
+  ctx.font = `${weight ? weight + " " : ""}${size}px "PingFang SC","Microsoft YaHei",serif`;
+  ctx.textAlign = align;
+  ctx.lineWidth = Math.max(4, size * 0.16);
+  ctx.strokeStyle = stroke;
+  ctx.lineJoin = "round";
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = fill;
+  ctx.fillText(text, x, y);
+}
+
+// 排版：把舞种块排入 cols 栏；返回是否全部排下
+function posterLayout(ctx, blocks, cols, colW, top, bottom, scale, ink, stroke, accent, muted, dark) {
+  const headH = 110 * scale, lineH = 86 * scale, blockPad = 46 * scale;
+  const heights = blocks.map((b) => headH + b.tracks.length * lineH + blockPad);
+  const colH = bottom - top;
+  // 顺序装栏；单块超栏高则失败（触发缩放）
+  const colContent = [];
+  let ci = 0, used = 0, overflow = false;
+  colContent.push([]);
+  for (let i = 0; i < blocks.length; i++) {
+    if (heights[i] > colH) { overflow = true; }
+    if (used + heights[i] > colH && colContent[ci].length) {
+      ci++;
+      if (ci >= cols) { overflow = true; break; }
+      colContent.push([]); used = 0;
+    }
+    colContent[ci].push({ ...blocks[i], h: heights[i] });
+    used += heights[i];
+  }
+  if (overflow) return false;
+
+  // 背景微衬底已由整体 scrim 承担；逐栏排版
+  let colX = 130;
+  for (let cIdx = 0; cIdx < colContent.length; cIdx++) {
+    let y = top;
+    for (const b of colContent[cIdx]) {
+      const numW = 70 * scale;
+      drawStrokeText(ctx, b.cat, colX, y, "left", 84*scale, accent, stroke, "bold");
+      ctx.fillStyle = accent;
+      ctx.fillRect(colX, y + 96*scale, colW - 40*scale, 4*scale);
+      let ey = y + headH + 16*scale;
+      b.tracks.forEach((t, i) => {
+        const n = `${i + 1}.`;
+        drawStrokeText(ctx, n, colX, ey, "left", 56*scale, muted, stroke, "");
+        let tx = colX + numW;
+        const maxW = colW - numW - 150*scale;
+        let title = t.title;
+        while (ctx.measureText(title).width === 0 || measureFit(ctx, title, 56*scale) > maxW) {
+          if (title.length <= 1) break;
+          title = title.slice(0, -1);
+        }
+        if (title !== t.title) title += "…";
+        drawStrokeText(ctx, title, tx, ey, "left", 56*scale, ink, stroke, "");
+        const d = state.durations[t.path];
+        if (d) {
+          ctx.font = `${42*scale}px "PingFang SC","Microsoft YaHei",serif`;
+          ctx.textAlign = "right";
+          ctx.strokeText(fmtTime(d), colX + colW - 60*scale, ey + 10*scale);
+          ctx.fillStyle = muted; ctx.fillText(fmtTime(d), colX + colW - 60*scale, ey + 10*scale);
+          ctx.textAlign = "left";
+        }
+        ey += lineH;
+      });
+      y += b.h;
+    }
+    colX += colW + colGapFix(cols, colW);
+  }
+  return true;
+}
+function colGapFix(cols, colW) { return (POSTER_W - 260 - colW * cols) / Math.max(1, cols - 1); }
+function measureFit(ctx, text, size) {
+  ctx.font = `${size}px "PingFang SC","Microsoft YaHei",serif`;
+  return ctx.measureText(text).width;
+}
+
+/* ---------- 歌单图片对话框 ---------- */
+$("#btn-poster").onclick = () => {
+  if (!state.playlist.length) { toast("歌单为空，先生成或添加乐曲", true); return; }
+  $("#poster-title").value = "舞会歌单";
+  $("#poster-sub").value = new Date().toLocaleDateString("zh-CN") + " 舞会";
+  renderPresetThumbs();
+  $("#dlg-poster").classList.remove("hidden");
+  renderPoster();
+};
+
+function renderPresetThumbs() {
+  const box = $("#poster-presets");
+  box.innerHTML = "";
+  for (const p of POSTER_PRESETS) {
+    const b = document.createElement("button");
+    b.className = "preset-thumb" + (poster.bg === p.id && !poster.bgImage ? " active" : "");
+    b.style.background = p.css;
+    b.title = p.name;
+    b.onclick = () => { poster.bg = p.id; poster.bgImage = null; renderPresetThumbs(); renderPoster(); };
+    box.appendChild(b);
+  }
+}
+
+$("#poster-title").addEventListener("input", renderPoster);
+$("#poster-sub").addEventListener("input", renderPoster);
+
+$("#poster-import").addEventListener("change", () => {
+  const f = $("#poster-import").files[0];
+  if (!f) return;
+  const img = new Image();
+  img.onload = () => { poster.bgImage = img; poster.bg = "custom"; renderPresetThumbs(); renderPoster(); toast("自定义背景已应用"); };
+  img.onerror = () => toast("图片无法读取", true);
+  img.src = URL.createObjectURL(f);
+  $("#poster-import").value = "";
+});
+
+$("#poster-download").onclick = () => {
+  renderPoster();
+  $("#poster-canvas").toBlob((blob) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = ($("#poster-title").value.trim() || "歌单") + "-A4.png";
+    document.body.appendChild(a); a.click(); a.remove();
+    toast("歌单图片已生成");
+  }, "image/png");
+};
+
 /* ---------- 启动 ---------- */
 refresh();
+

@@ -381,6 +381,41 @@ body[data-view="help"] #playlist-pane { display: none; }
 .comp-track.playing { color: var(--accent); font-weight: 600; }
 #comp-queue { max-height: 40vh; overflow-y: auto; }
 
+/* ---- 歌单图片 ---- */
+.poster-dialog { width: min(1180px, 96vw); }
+.poster-layout { display: flex; gap: 20px; align-items: flex-start; }
+.poster-controls {
+  width: 300px; min-width: 240px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.pc-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.pc-field input[type="text"] {
+  background: var(--bg); border: 1px solid var(--line); color: var(--fg);
+  border-radius: 8px; padding: 9px 12px; font-size: 14px;
+}
+.poster-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.preset-thumb {
+  width: 64px; height: 90px;
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.preset-thumb.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(240,161,60,.4); }
+.btn-file {
+  cursor: pointer; background: var(--bg3); border: 1px dashed var(--line);
+  border-radius: 8px; padding: 10px 12px; color: var(--fg); font-size: 13px;
+}
+.btn-file:hover { border-color: var(--accent); }
+.btn-file input { display: none; }
+#poster-download { margin-top: 4px; padding: 12px; font-size: 14px; }
+.poster-preview {
+  flex: 1; min-width: 0;
+  width: auto; height: 62vh;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #111;
+}
+
 /* ---- 播放设置条（歌单/点播页内嵌） ---- */
 .ctrl-strip {
   display: flex;
