@@ -443,6 +443,7 @@ async function flushDurations() {
   const items = pendingReports; pendingReports = [];
   if (!items.length) return;
   try { await fetch("/api/durations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) }); } catch (_) {}
+  if (state && !$("#dlg-poster").classList.contains("hidden")) renderPoster();
 }
 function renderPlaylistDurations() {
   document.querySelectorAll("#pl-list [data-dur]").forEach((td) => {
@@ -1296,9 +1297,28 @@ function renderHelp() {
 
 
 /* ================= 歌单图片（A4 印刷版渲染） =================
-   Canvas 渲染：预设经典背景 / 自定义图片背景，描边文字保证任意背景高可读。 */
+   以 SVG 模板思路直接在 Canvas 上排版：
+   - 按歌单编辑顺序平铺（不分组），每首曲名后附舞种标签
+   - 舞者线稿水印（OpenMoji 1F483/1F57A，CC BY-SA 4.0 — openmoji.org）
+   - 描边文字 + 背景明度自适应，保证任意背景高可读 */
 const POSTER_W = 2480, POSTER_H = 3508; // A4 竖版 300dpi
 const poster = { bg: "navy", bgImage: null };
+
+// 舞者线稿（OpenMoji，CC BY-SA 4.0）。stroke 占位符在绘制时替换为主题色。
+const DANCER_WOMAN = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><g fill="none" stroke="__C__" stroke-linecap="round" stroke-linejoin="round"><circle cx="33.9193" cy="9.8664" r="2.8598" stroke-width="2.4"/><path stroke-width="2.4" d="M42.4987,33.8888,32.68,37.6065c-.9532.3813-2.5738.858-3.6224,1.144L14.7585,42.5636a1.8051,1.8051,0,0,1-2.2878-.9533c-.286-.7626.286-1.7159,1.3346-2.1925l10.7719-4.3851a22.5882,22.5882,0,0,0,3.3365-1.8112l6.3869-4.3851c.8579-.5719,2.1925-1.62,2.86-2.1925a3.2033,3.2033,0,0,0,.6673-2.9551l-.286-.858a6.0828,6.0828,0,0,0-1.62-2.3831,6.8574,6.8574,0,0,1-.9533-.572"/><path stroke-width="2.4" d="M38.6856,35.5093l2.0972,10.2c.1907,1.0486.4767,2.7645.572,3.8131l.7626,10.772c.0953,1.0486.7626,1.9065,1.5253,1.9065a1.81,1.81,0,0,0,1.5252-1.9065l.9533-12.3925c.0953-1.0486.0953-2.7645.0953-3.8131V33.6028c0-1.0486-.0953-2.7645-.0953-3.8131l-.6673-9.5327a6.6691,6.6691,0,0,0-1.43-3.2411l-2.4785-2.5738"/><path stroke-width="3.4" d="M55.5585,6.9112l-5.72,3.7178a22.0593,22.0593,0,0,1-3.3364,1.7159l-3.5271,1.3345c-.9533.3813-2.5739.9533-3.6225,1.2393l-2.5738.7626a14.1834,14.1834,0,0,0-3.4318,1.6206l-2.6691,1.9065a22.0512,22.0512,0,0,1-3.3365,1.7159L18.667,24.07"/></g></svg>`;
+const DANCER_MAN = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><g fill="none" stroke="__C__" stroke-linecap="round" stroke-linejoin="round"><circle cx="33.9688" cy="8.0938" r="3" stroke-width="2.4"/><path stroke-width="3" d="M12.875,12l4.6963,4.6006c0.7861,0.7695,2.3115,1.2231,3.3896,1.0073l6.0782-1.2158c1.0781-0.2158,2.8584-0.4609,3.955-0.5454 l9.0118-0.6934c1.0966-0.0845,2.8808,0.003,3.9638,0.1944L59,18"/><path stroke-width="2.4" d="M29,20c0,0,0.4502,0.4502,1,1c0.5498,0.5498,1.1758,1.8823,1.3926,2.9609l1.2148,6.0782c0.2168,1.0781,0.0381,2.788-0.3945,3.7988 l-4.4258,10.3242c-0.4326,1.0108-0.5019,2.6914-0.1543,3.7354l2.7344,8.205C30.7148,57.1465,31.6748,58,32.5,58 c0.8252,0,1.3389-0.8857,1.1426-1.9678l-1.2852-7.0644c-0.1963-1.0821,0.0801-2.7549,0.6133-3.7158l3.0576-5.504 C36.5625,38.7871,37.4492,38,38,38c0.5498,0,1,0.9004,1,2v9c0,1.0996-0.0342,2.8994-0.0752,3.999l-0.4492,12.002 C38.4346,66.1006,39.1426,67,40.0508,67c0.9072,0,1.7705-0.8916,1.918-1.9824l1.7626-13.0352 c0.1475-1.0908,0.3331-2.8799,0.4112-3.9775l0.7148-10.0098c0.0781-1.0976-0.0136-2.8818-0.2051-3.9648L42,19"/></g></svg>`;
+
+const posterImgCache = {};
+function posterDancerImage(svgStr, key) {
+  if (posterImgCache[key]) return posterImgCache[key];
+  const img = new Image();
+  img.onload = () => {
+    if (state && !$("#dlg-poster").classList.contains("hidden")) renderPoster();
+  };
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgStr);
+  posterImgCache[key] = img;
+  return img;
+}
 
 const POSTER_PRESETS = [
   { id: "navy",  name: "午夜蓝金", dark: true,
@@ -1323,7 +1343,6 @@ function posterGrad(ctx, from, to) {
   g.addColorStop(0, from); g.addColorStop(1, to);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, POSTER_W, POSTER_H);
-  // 暗角
   const v = ctx.createRadialGradient(POSTER_W/2, POSTER_H*0.42, POSTER_H*0.2, POSTER_W/2, POSTER_H/2, POSTER_H*0.75);
   v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,0.30)");
   ctx.fillStyle = v; ctx.fillRect(0, 0, POSTER_W, POSTER_H);
@@ -1335,7 +1354,6 @@ function posterFrame(ctx, color) {
 }
 
 function posterBgLuminanceDark() {
-  // 对当前画布取样平均亮度：返回 true 表示背景偏暗（应用浅色文字）
   const c = document.createElement("canvas");
   c.width = 80; c.height = 113;
   const x = c.getContext("2d");
@@ -1346,12 +1364,42 @@ function posterBgLuminanceDark() {
   return (sum / (d.length / 4)) < 140;
 }
 
+function drawStrokeText(ctx, text, x, y, align, size, fill, stroke, weight, strokeW) {
+  ctx.font = `${weight ? weight + " " : ""}${size}px "PingFang SC","Microsoft YaHei",serif`;
+  ctx.textAlign = align;
+  ctx.textBaseline = "top";
+  ctx.lineWidth = strokeW ?? Math.max(3, size * 0.10);
+  ctx.strokeStyle = stroke;
+  ctx.lineJoin = "round";
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = fill;
+  ctx.fillText(text, x, y);
+}
+
+// 绘制舞种标签（圆角描边胶囊 + 文字），返回实际宽度
+function drawTag(ctx, text, x, yCenter, size, accent, stroke) {
+  ctx.font = `${size}px "PingFang SC","Microsoft YaHei",serif`;
+  const tw = ctx.measureText(text).width;
+  const padX = size * 0.55, padY = size * 0.42;
+  const w = tw + padX * 2, h = size + padY * 2;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, yCenter - h/2, w, h, h/2);
+  else ctx.rect(x, yCenter - h/2, w, h);
+  ctx.strokeStyle = accent; ctx.lineWidth = Math.max(2, size * 0.07);
+  ctx.stroke();
+  ctx.font = `${size}px "PingFang SC","Microsoft YaHei",serif`;
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.lineWidth = Math.max(2, size * 0.10); ctx.strokeStyle = stroke; ctx.lineJoin = "round";
+  ctx.strokeText(text, x + padX, yCenter);
+  ctx.fillStyle = accent; ctx.fillText(text, x + padX, yCenter);
+  return w;
+}
+
 function renderPoster() {
   const cv = $("#poster-canvas");
   const ctx = cv.getContext("2d");
   const preset = POSTER_PRESETS.find((p) => p.id === poster.bg) || POSTER_PRESETS[0];
   if (poster.bgImage) {
-    // 自定义图：等比 cover 裁切铺满
     const img = poster.bgImage, s = Math.max(POSTER_W/img.width, POSTER_H/img.height);
     const w = img.width*s, h = img.height*s;
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, POSTER_W, POSTER_H);
@@ -1360,127 +1408,92 @@ function renderPoster() {
     preset.draw(ctx);
   }
   const dark = poster.bgImage ? posterBgLuminanceDark() : preset.dark;
-  const ink     = dark ? "#f5efe2" : "#2b2115";      // 主文字
-  const stroke  = dark ? "rgba(10,8,4,0.85)" : "rgba(255,252,240,0.9)"; // 描边
-  const accent  = dark ? "#e3c37a" : "#8a6d1f";      // 分组/装饰
-  const muted   = dark ? "rgba(245,239,226,0.75)" : "rgba(43,33,21,0.72)";
+  const ink    = dark ? "#f5efe2" : "#2b2115";
+  const stroke = dark ? "rgba(8,10,16,0.9)" : "rgba(255,252,240,0.95)";
+  const accent = dark ? "#e3c37a" : "#8a6d1f";
+  const muted  = dark ? "rgba(245,239,226,0.78)" : "rgba(43,33,21,0.75)";
+  const dancerC = dark ? "#e3c37a" : "#8a6d1f";
 
-  // 半透明衬底，保证任何背景下的可读性
-  const scrim = dark ? "rgba(6,8,14,0.42)" : "rgba(255,252,242,0.55)";
-  ctx.fillStyle = scrim;
-  const m = 130, r = 46;
+  const M = 190; // 页边距
+  // 舞者线稿水印（背景装饰，低透明度）
+  const wImg = posterDancerImage(DANCER_WOMAN.replaceAll("__C__", dancerC), "w" + dancerC);
+  const mImg = posterDancerImage(DANCER_MAN.replaceAll("__C__", dancerC), "m" + dancerC);
+  ctx.save();
+  ctx.globalAlpha = dark ? 0.20 : 0.22;
+  if (wImg.complete && wImg.naturalWidth) ctx.drawImage(wImg, POSTER_W - 1010, POSTER_H - 1560, 860, 860);
+  if (mImg.complete && mImg.naturalWidth) ctx.drawImage(mImg, 120, POSTER_H - 1150, 640, 640);
+  ctx.restore();
+
+  // 半透明衬底（内容区）
+  ctx.fillStyle = dark ? "rgba(6,8,14,0.38)" : "rgba(255,252,242,0.60)";
   ctx.beginPath();
-  if (ctx.roundRect) ctx.roundRect(m, 150, POSTER_W - m*2, POSTER_H - 150 - 210, r);
-  else ctx.rect(m, 150, POSTER_W - m*2, POSTER_H - 150 - 210);
+  const sy = 150, sh = POSTER_H - 150 - 190;
+  if (ctx.roundRect) ctx.roundRect(108, sy, POSTER_W - 216, sh, 40);
+  else ctx.rect(108, sy, POSTER_W - 216, sh);
   ctx.fill();
 
   // 标题区
   const title = ($("#poster-title").value || "舞会歌单").trim();
   const sub = $("#poster-sub").value.trim();
   ctx.textBaseline = "top";
-  drawStrokeText(ctx, title, POSTER_W/2, 320, "center", 170, ink, stroke, "bold");
+  drawStrokeText(ctx, title, POSTER_W/2, 268, "center", 168, ink, stroke, "bold", 14);
   ctx.fillStyle = accent;
-  ctx.fillRect(POSTER_W/2 - 260, 560, 520, 7);
-  if (sub) drawStrokeText(ctx, sub, POSTER_W/2, 620, "center", 66, muted, stroke, "");
+  ctx.fillRect(POSTER_W/2 - 270, 512, 540, 7);
+  if (sub) drawStrokeText(ctx, sub, POSTER_W/2, 566, "center", 64, muted, stroke, "", 4);
 
-  // 内容：按舞种分块，双栏自适应
-  const byCat = new Map();
-  for (const t of state.playlist) {
-    if (t.missing) continue;
-    const k = t.category || "乐曲";
-    if (!byCat.has(k)) byCat.set(k, []);
-    byCat.get(k).push(t);
-  }
-  const blocks = [...byCat.entries()].map(([cat, tracks]) => ({ cat, tracks }));
+  // 汇总行
+  const items = (state.playlist || []).filter((t) => !t.missing);
+  let totalSec = 0;
+  for (const t of items) totalSec += state.durations[t.path] || 0;
+  const summary = `共 ${items.length} 首` + (totalSec > 0 ? ` · 约 ${Math.round(totalSec/60)} 分钟` : "");
+  drawStrokeText(ctx, summary, POSTER_W/2, sub ? 700 : 640, "center", 50, accent, stroke, "", 3);
 
-  const colTop = sub ? 800 : 740;
-  const colBottom = POSTER_H - 300;
-  const colGap = 90;
-  const cols = blocks.length > 6 || state.playlist.length > 34 ? 3 : 2;
-  const colW = (POSTER_W - m*2 - colGap*(cols-1)) / cols;
+  // 曲目：按歌单编辑顺序平铺（不分组），双栏
+  const listTop = (sub ? 830 : 760) + 90;
+  const listBottom = POSTER_H - 260;
+  const colGap = 110;
+  const cols = items.length > 26 ? 3 : 2;
+  const colW = (POSTER_W - M*2 - colGap*(cols-1)) / cols;
+  const perCol = Math.ceil(items.length / cols);
 
-  // 自动缩放直到排下
-  for (let scale = 1.0; scale >= 0.55; scale -= 0.06) {
-    if (posterLayout(ctx, blocks, cols, colW, colTop, colBottom, scale, ink, stroke, accent, muted, dark)) break;
+  // 条目高度随数量自适应：少时舒展铺满整页，多时压缩保证一页排下
+  const avail = listBottom - listTop;
+  let entryH = Math.min(172, Math.max(96, avail / perCol));
+  while (perCol * entryH > avail && entryH > 64) entryH -= 4;
+  const nameSize = Math.min(58, entryH * 0.42);
+  const tagSize = nameSize * 0.5;
+
+  for (let c = 0; c < cols; c++) {
+    const x0 = M + c * (colW + colGap);
+    for (let i = 0; i < perCol; i++) {
+      const idx = c * perCol + i;
+      const t = items[idx];
+      if (!t) break;
+      const y = listTop + i * entryH;
+      drawStrokeText(ctx, String(idx + 1), x0, y, "left", nameSize * 0.86, accent, stroke, "bold", 3);
+      let tx = x0 + nameSize * 1.1;
+      const durText = state.durations[t.path] ? fmtTime(state.durations[t.path]) : "";
+      const tagText = (t.category || "").trim();
+      ctx.font = `${nameSize}px "PingFang SC","Microsoft YaHei",serif`;
+      const nameMax = colW - (tx - x0) - (durText ? 190 : 40) - (tagText ? tagText.length * tagSize * 1.6 + 30 : 0);
+      let title = t.title;
+      while (title.length > 1 && measureW(title, nameSize) > nameMax) title = title.slice(0, -1);
+      if (title !== t.title) title += "…";
+      drawStrokeText(ctx, title, tx, y, "left", nameSize, ink, stroke, "600", nameSize * 0.09);
+      tx += measureW(title, nameSize) + nameSize * 0.35;
+      if (tagText) tx += drawTag(ctx, tagText, tx, y + nameSize * 0.52, tagSize, accent, stroke);
+      if (durText) drawStrokeText(ctx, durText, x0 + colW, y + nameSize * 0.06, "right", nameSize * 0.72, muted, stroke, "", 3);
+    }
   }
 
   // 页脚
   drawStrokeText(ctx, `舞会音乐播放器 · ${new Date().toLocaleDateString("zh-CN")}`,
-    POSTER_W/2, POSTER_H - 165, "center", 42, muted, stroke, "");
+    POSTER_W/2, POSTER_H - 150, "center", 40, muted, stroke, "", 3);
 }
 
-function drawStrokeText(ctx, text, x, y, align, size, fill, stroke, weight) {
-  ctx.font = `${weight ? weight + " " : ""}${size}px "PingFang SC","Microsoft YaHei",serif`;
-  ctx.textAlign = align;
-  ctx.lineWidth = Math.max(4, size * 0.16);
-  ctx.strokeStyle = stroke;
-  ctx.lineJoin = "round";
-  ctx.strokeText(text, x, y);
-  ctx.fillStyle = fill;
-  ctx.fillText(text, x, y);
-}
-
-// 排版：把舞种块排入 cols 栏；返回是否全部排下
-function posterLayout(ctx, blocks, cols, colW, top, bottom, scale, ink, stroke, accent, muted, dark) {
-  const headH = 110 * scale, lineH = 86 * scale, blockPad = 46 * scale;
-  const heights = blocks.map((b) => headH + b.tracks.length * lineH + blockPad);
-  const colH = bottom - top;
-  // 顺序装栏；单块超栏高则失败（触发缩放）
-  const colContent = [];
-  let ci = 0, used = 0, overflow = false;
-  colContent.push([]);
-  for (let i = 0; i < blocks.length; i++) {
-    if (heights[i] > colH) { overflow = true; }
-    if (used + heights[i] > colH && colContent[ci].length) {
-      ci++;
-      if (ci >= cols) { overflow = true; break; }
-      colContent.push([]); used = 0;
-    }
-    colContent[ci].push({ ...blocks[i], h: heights[i] });
-    used += heights[i];
-  }
-  if (overflow) return false;
-
-  // 背景微衬底已由整体 scrim 承担；逐栏排版
-  let colX = 130;
-  for (let cIdx = 0; cIdx < colContent.length; cIdx++) {
-    let y = top;
-    for (const b of colContent[cIdx]) {
-      const numW = 70 * scale;
-      drawStrokeText(ctx, b.cat, colX, y, "left", 84*scale, accent, stroke, "bold");
-      ctx.fillStyle = accent;
-      ctx.fillRect(colX, y + 96*scale, colW - 40*scale, 4*scale);
-      let ey = y + headH + 16*scale;
-      b.tracks.forEach((t, i) => {
-        const n = `${i + 1}.`;
-        drawStrokeText(ctx, n, colX, ey, "left", 56*scale, muted, stroke, "");
-        let tx = colX + numW;
-        const maxW = colW - numW - 150*scale;
-        let title = t.title;
-        while (ctx.measureText(title).width === 0 || measureFit(ctx, title, 56*scale) > maxW) {
-          if (title.length <= 1) break;
-          title = title.slice(0, -1);
-        }
-        if (title !== t.title) title += "…";
-        drawStrokeText(ctx, title, tx, ey, "left", 56*scale, ink, stroke, "");
-        const d = state.durations[t.path];
-        if (d) {
-          ctx.font = `${42*scale}px "PingFang SC","Microsoft YaHei",serif`;
-          ctx.textAlign = "right";
-          ctx.strokeText(fmtTime(d), colX + colW - 60*scale, ey + 10*scale);
-          ctx.fillStyle = muted; ctx.fillText(fmtTime(d), colX + colW - 60*scale, ey + 10*scale);
-          ctx.textAlign = "left";
-        }
-        ey += lineH;
-      });
-      y += b.h;
-    }
-    colX += colW + colGapFix(cols, colW);
-  }
-  return true;
-}
-function colGapFix(cols, colW) { return (POSTER_W - 260 - colW * cols) / Math.max(1, cols - 1); }
-function measureFit(ctx, text, size) {
+function measureW(text, size) {
+  const cv = $("#poster-canvas");
+  const ctx = cv.getContext("2d");
   ctx.font = `${size}px "PingFang SC","Microsoft YaHei",serif`;
   return ctx.measureText(text).width;
 }
@@ -1534,4 +1547,3 @@ $("#poster-download").onclick = () => {
 
 /* ---------- 启动 ---------- */
 refresh();
-

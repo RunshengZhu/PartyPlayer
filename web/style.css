@@ -581,6 +581,11 @@ input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
   body[data-tab="pl"] #playlist-pane { display: flex; }
   body:not([data-tab]) #playlist-pane { display: flex; }
 
+  /* 歌单图片对话框：控制区上置、预览撑满宽度 */
+  .poster-layout { flex-direction: column-reverse; }
+  .poster-controls { width: auto; min-width: 0; }
+  .poster-preview { width: 100%; height: auto; max-height: 52vh; }
+
   /* 歌单管理页 / 赛事模式占满全屏 */
   body[data-view="playlists"] #mobile-tabs,
   body[data-view="comp"] #mobile-tabs,
